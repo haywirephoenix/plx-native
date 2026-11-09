@@ -14,6 +14,10 @@ name: demo build (debug)
 
 on:
   workflow_dispatch:
+  # A fork can only dispatch a workflow that is on its default branch; a push to this branch
+  # runs it without touching that branch.
+  push:
+    branches: [demo-build]
 
 permissions:
   contents: read
