@@ -1,0 +1,67 @@
+name: demo build (debug)
+
+# A developer-only DEBUG package (`com.beb.plxnative.debug`, dev triggers ON) for a machine that
+# cannot cross-build locally. It exists so a tester can boot the app straight to Home on
+# tests/mock_pms.py's synthetic library (`tools/tv-session.sh up --guest --mock`), which needs the
+# `/tmp/plxnative-token` trigger that every RELEASE build compiles out.
+#
+# The PMS address compiled into it is LOOPBACK (127.0.0.1:32400), never a LAN address: this file
+# runs in public, so the build carries no private value. On the set, a reverse ssh tunnel
+# (`ssh -R 32400:127.0.0.1:32400 root@<tv>`) makes the device's loopback reach the mock on the
+# tester's computer.
+#
+# Never install this on the stable id; the Makefile's release-guard refuses that anyway.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install the pinned Rust and the armv7 target
+        uses: ./.github/actions/rust-toolchain
+
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          workspaces: rust-modules
+          key: armv7-demo
+
+      - name: Cache the pinned downloads
+        uses: ./.github/actions/deps-cache
+
+      - id: ndk
+        uses: ./.github/actions/webos-ndk
+
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            vendor/ffmpeg-prefix
+            vendor/ffmpeg-build
+          key: ffmpeg-${{ runner.arch }}-${{ hashFiles('ci/build-ffmpeg.sh', 'ci/deps.py', 'ci/dependencies.json') }}
+
+      - name: Point the build at the mock over loopback
+        run: |
+          printf '%s\n' '#define PMS_HOST "127.0.0.1"' '#define PMS_PORT 32400' > src/config.local.h
+
+      - name: Build + package (FLAVOR=debug, dev triggers on)
+        env:
+          WEBOS_SDK: ${{ steps.ndk.outputs.sdk-dir }}
+          FLAVOR: debug
+        run: |
+          make -j"$(nproc)"
+          make ipk
+          ls -l pkg/*.ipk
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: plxnative-debug-ipk
+          path: pkg/com.beb.plxnative.debug_*_arm.ipk
+          if-no-files-found: error
+          retention-days: 7
