@@ -456,6 +456,12 @@ LIBS_REAL = -lSDL2 -lSDL2_ttf -lGLESv2 -lluna-service2 -lglib-2.0 \
 # binary that can still upload a snapshot, which is the configuration a submission candidate is
 # actually tested in. The feature is not in the default set at all, so no ordinary build and no
 # forgotten flag can produce it.
+#
+# **DEMO=1** adds `demo-pms`, the demo build's own PMS (`docs/demo-pms.md`): the app answers its
+# requests on its compiled-in loopback origin from `pkg/demo/` (written by `tools/demo_bundle.py`),
+# which `ipk` packages beside the binary, so a television runs the demo library with no computer.
+# Its own target dir too, and `demo-guard` refuses it with RELEASE=1 or FLAVOR=stable: it is a
+# developer build and boots unattended as a synthetic guest.
 # INCREMENTAL COMPILATION, OFF IN A LINKED WORKTREE — the single biggest thing on this disk.
 #
 # Measured 2026-09-03 across twelve fleet lanes plus the main checkout: 45 GB of derived trees, of
@@ -578,9 +584,9 @@ PLAYBACK_HAS_FEED = $(filter both feed,$(PLAYBACK_BACKENDS))
 PLAYBACK_EMPTY :=
 PLAYBACK_SPACE := $(PLAYBACK_EMPTY) $(PLAYBACK_EMPTY)
 PLAYBACK_COMMA := ,
-RUST_BUILD_FEATURES = $(subst $(PLAYBACK_SPACE),$(PLAYBACK_COMMA),$(strip $(subst $(PLAYBACK_COMMA),$(PLAYBACK_SPACE),$(RUST_BACKEND_FEATURES)) $(if $(RELEASE),,devtools devtriggers threadcheck) $(if $(LAB),lab-diagnostics,)))
+RUST_BUILD_FEATURES = $(subst $(PLAYBACK_SPACE),$(PLAYBACK_COMMA),$(strip $(subst $(PLAYBACK_COMMA),$(PLAYBACK_SPACE),$(RUST_BACKEND_FEATURES)) $(if $(RELEASE),,devtools devtriggers threadcheck) $(if $(LAB),lab-diagnostics,) $(if $(DEMO),demo-pms,)))
 RUST_FEATFLAGS = --no-default-features $(if $(RUST_BUILD_FEATURES),--features $(RUST_BUILD_FEATURES),)
-RUST_TDIR = target$(if $(RELEASE),-release,)$(if $(LAB),-lab,)$(if $(SYMBOLS),-sym,)$(if $(filter both,$(PLAYBACK_BACKENDS)),,-$(PLAYBACK_BACKENDS))
+RUST_TDIR = target$(if $(RELEASE),-release,)$(if $(LAB),-lab,)$(if $(DEMO),-demo,)$(if $(SYMBOLS),-sym,)$(if $(filter both,$(PLAYBACK_BACKENDS)),,-$(PLAYBACK_BACKENDS))
 
 # OVERRIDING RUST_FEATFLAGS BY HAND? PASS RUST_TDIR TOO. This dir is keyed on RELEASE, not on the
 # flag set, so `make RUST_FEATFLAGS=...` alone lands in the SAME target/ as an ordinary build:
@@ -843,7 +849,7 @@ RUST_CFG       = features:$(RUST_FEATFLAGS)$(if $(filter-out release,$(ARM_PROFI
 # goal in the two kinds above resets nothing under a dry run, and every goal named as NOT here stays out
 # of the list. The list is ONE line on purpose (`grep '^SIDE_EFFECT_FREE' Makefile` is the exact set,
 # and several tests read it that way).
-SIDE_EFFECT_FREE = $(QUERY_GOALS) release-guard lab-guard disk disk-preflight build-bench build-bench-quick test-hostsim check-nodef test-fast test-crate fuzz-hud lint check-cargo-lint check-cargo-unit-hostsim check-localization check-c-unit check-python-harness notices notices-verify setup-rust setup-env disk-watch disk-watch-uninstall fixtures fixtures-quick fixtures-pipeline demo-library sim-token sim-macos-token sim-clean sim-macos-clean kill run run-stream verify-deploy uninstall fetch-profile softfloat-probe tv-lock-require
+SIDE_EFFECT_FREE = $(QUERY_GOALS) release-guard lab-guard demo-guard disk disk-preflight build-bench build-bench-quick test-hostsim check-nodef test-fast test-crate fuzz-hud lint check-cargo-lint check-cargo-unit-hostsim check-localization check-c-unit check-python-harness notices notices-verify setup-rust setup-env disk-watch disk-watch-uninstall fixtures fixtures-quick fixtures-pipeline demo-library sim-token sim-macos-token sim-clean sim-macos-clean kill run run-stream verify-deploy uninstall fetch-profile softfloat-probe tv-lock-require
 PURE_QUERY := $(if $(MAKECMDGOALS),$(if $(filter-out $(SIDE_EFFECT_FREE),$(MAKECMDGOALS)),,yes),)
 # `PLAYBACK_BACKENDS=none` builds no television package. It is refused HERE, at parse time and before
 # the stamp reset below: a recipe-level refusal ran after that reset, so a mistyped
@@ -2181,6 +2187,8 @@ ipk: pkg/plxnative pkg/plxnative-storage $(APPINFO) release-guard
 	cp $(APP_FILES) $(STAGE)/
 	mkdir -p $(STAGE)/$(SUBS_FONT_DIR) && cp $(SUBS_FONT_FILES) $(STAGE)/$(SUBS_FONT_DIR)/
 	cp $(LICENSE_FILES) $(STAGE)/licenses/
+	@# DEMO=1: the demo bundle the app serves to itself (`crate::demo` reads $(APPDIR)/demo/index.json).
+	@if [ -n "$(DEMO)" ]; then cp -R pkg/demo $(STAGE)/demo; fi
 	@# Strip the STAGED copy only, never pkg/plxnative. ~2.4 MB of .symtab+.strtab (30% of the
 	@# download, on a device whose app partition is 615 MB total and shared with every other app).
 	@# It must not be pkg/plxnative because tools/crash-report.sh symbolizes a crash PC against
@@ -2232,7 +2240,20 @@ ipk: pkg/plxnative pkg/plxnative-storage $(APPINFO) release-guard
 # And a LAB build with no `pkg/lab.json` is inert — it boots, logs `lab: INERT`, and answers the
 # button with nothing, which in a rented Cloud Test Lab hour is indistinguishable from the colour
 # key not being delivered at all. Failing here names the command that fixes it.
-release-guard: lab-guard
+release-guard: lab-guard demo-guard
+# A DEMO BUILD IS A DEVELOPER BUILD: it signs in unattended as a synthetic guest and answers its own
+# PMS requests, so it never takes the stable id or a release configuration, and it never packages
+# without the bundle it serves (an absent bundle boots an ordinary debug build that says so in its
+# log, which on a television with no computer attached reads as a broken demo).
+demo-guard:
+	@if [ -n "$(DEMO)" ] && { [ "$(FLAVOR)" = stable ] || [ -n "$(RELEASE)" ]; }; then \
+	  echo "refusing DEMO=1 with FLAVOR=stable or RELEASE=1 — the demo build is a developer build."; \
+	  echo "  demo package:  make DEMO=1 ipk          (FLAVOR=debug, the default)"; \
+	  exit 1; fi
+	@if [ -n "$(DEMO)" ] && [ ! -f pkg/demo/index.json ]; then \
+	  echo "DEMO=1 but pkg/demo/index.json is missing — the package would have nothing to serve."; \
+	  echo "  write it first:  python3 tools/demo_bundle.py   (docs/demo-pms.md)"; \
+	  exit 1; fi
 lab-guard:
 	@if [ -n "$(LAB)" ] && [ "$(FLAVOR)" = stable ] && [ -z "$(ALLOW_DEV_ON_STABLE)" ]; then \
 	  echo "refusing to put a LAB build on $(APPID_STABLE) — that id is what users install."; \
@@ -2690,4 +2711,4 @@ fetch-profile:
 	@ls -l pkg/plxnative-*.jsonl 2>/dev/null || echo "no profiler output in $(RUNDIR) on the TV ($(APPID))"
 
 .PHONY: setup-rust libass libass-host screenshots screenshots-sim demo-library disk symbols symbols-libs sentry-symbols sentry-native all setup-env telemetry-local deploy verify-deploy run run-stream kill check check-unlocked check-ffmpeg lint test ipk clean tv-lock-require threadprobe sockprobe logmprobe mali-hwcnt-probe tv-capture-bench mali-irq-sample plxnative-stackwalk sim sim-macos sim-linux site-video-sim sim-wsl sim-run sim-macos-run sim-shot sim-macos-shot sim-token sim-macos-token sim-play sim-macos-play sim-clean sim-macos-clean macapp macapp-zip fixtures fixtures-quick fixtures-pipeline fetch-profile \
-        release-guard lab-guard install uninstall $(QUERY_GOALS)
+        release-guard lab-guard demo-guard install uninstall $(QUERY_GOALS)

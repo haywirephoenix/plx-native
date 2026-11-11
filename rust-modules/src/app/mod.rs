@@ -606,6 +606,11 @@ fn enter_application(pms_host: *const c_char, pms_port: c_int) -> Result<App,c_i
     // A live boot's `install:`/`appdir:` preamble above owns the first two event-log lines.
     // Diagnostics probes `app_dir()` on its worker, so starting it earlier races that preamble.
     plx_platform::storage::diagnostics::start(env!("PLX_VERSION"));
+    // A `DEMO=1` build answers its own PMS requests from the packaged demo bundle on the
+    // compiled-in loopback origin (`crate::demo`). Bound here, before `boot` can send the first
+    // request; never on a controlled replay, which reads recorded results instead.
+    #[cfg(feature = "demo-pms")]
+    if !preflight.controlled() { crate::demo::start(pms_host, pms_port); }
     let main_thread = unsafe { plx_base::task::MainThread::assume() };
     let mut app = unsafe { boot(pms_host,pms_port,main_thread,preflight) }?;
     if telemetry_guard.is_some() { app.telemetry_guard = telemetry_guard; }

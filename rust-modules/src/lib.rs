@@ -17,6 +17,9 @@ compile_error!("native playback requires play-uri or play-feed");
 mod app; // run_application — the Rust app core / event loop (the entry inverted from main.c; port.rs's `plex_run` hands over to it)
 mod capture; // dev live UI capture stream: own-GLES-frame grab → MPEG1/TS or JPEG → TCP (UI plane only)
 mod coldstart; // retires old last-page bookmarks; authenticated cold boots now stay on Home
+// The demo build's own PMS: answers the app's requests from the packaged demo bundle (`make DEMO=1`).
+#[cfg(feature = "demo-pms")]
+mod demo;
 mod dev; // the /tmp/plxnative-* trigger surface, behind one `devtriggers` feature — read it before adding a trigger
 mod focusprobe; // dev: one diffable line naming everything app.rs's key ladder can move, logged when it changes
 // The simulator's HUD tools (`--hud-lint`, `--hud-schema`, `--hud-export`): a library function the thin

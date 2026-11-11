@@ -129,6 +129,14 @@ threadcheck = ["plx_base/threadcheck", "plx_ui/threadcheck"]
 # Everything else compiles identically.
 lab-diagnostics = ["plx_base/lab-diagnostics", "plx_net/lab-diagnostics", "plx_platform/lab-diagnostics", "plx_media/lab-diagnostics"]
 
+# **The demo build's own PMS** (`rust-modules/src/demo/`, docs/demo-pms.md): at boot the app answers
+# its own Plex requests on its compiled-in loopback origin from the demo bundle packaged beside it
+# (`tools/demo_bundle.py`), and signs in with the synthetic guest token, so a television runs the demo
+# library with no computer attached. OFF by default and in NO default set, like `lab-diagnostics`:
+# `make DEMO=1 …` turns it on, and the Makefile refuses it with `RELEASE=1` or `FLAVOR=stable`. It is
+# additive: one module, one boot call and one fallback in `dev::scenarios::dev_token`.
+demo-pms = []
+
 # **The demo-video dump build's pixel oracle** (`rust-modules/ui/src/placeholder.rs`): every
 # placeholder the UI draws is painted flat in one exact colour (#FF00FE) at alpha 1, so the dump's
 # frame scanner can find one by pixel value. OFF by default and in NO default set, so no ordinary

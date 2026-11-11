@@ -12,6 +12,9 @@ pkg/mali-irq-sample
 pkg/plxnative-stackwalk
 # Local opt-in profiler bundles: raw stacks/maps and device measurements are evidence, not source.
 pkg/diagnostics/
+# The demo bundle, written by tools/demo_bundle.py (docs/demo-pms.md); .new is its staging copy.
+pkg/demo/
+pkg/demo.new/
 pkg/*.ipk
 pkg/ipk.sha256
 

@@ -38,9 +38,45 @@ pub(super) fn without_window(key: &str) -> String {
     if query.is_empty() { path.to_owned() } else { format!("{path}?{query}") }
 }
 
+/// The window a request's query string asks for, and the query with the window's parameters
+/// removed (every other part kept in order). The reading side of [`paged_path`], for code that
+/// ANSWERS a paged request instead of sending one (the demo build's loopback server). `None` when
+/// the query carries no start or no size: the two travel together, and a lone size is ignored, as
+/// PMS ignores it. A value that is not a non-negative integer counts as absent.
+pub fn split_window(query: &str) -> (Option<PageReq>, String) {
+    let (mut start, mut size) = (None, None);
+    let mut rest = Vec::new();
+    for part in query.split('&').filter(|part| !part.is_empty()) {
+        let (name, value) = part.split_once('=').unwrap_or((part, ""));
+        match name {
+            "X-Plex-Container-Start" => start = value.parse::<usize>().ok(),
+            "X-Plex-Container-Size" => size = value.parse::<usize>().ok(),
+            _ => rest.push(part),
+        }
+    }
+    let window = match (start, size) {
+        (Some(start), Some(size)) => Some(PageReq { start, size }),
+        _ => None,
+    };
+    (window, rest.join("&"))
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{paged_path, PageReq};
+    use super::{paged_path, split_window, PageReq};
+
+    #[test]
+    fn split_window_reads_back_what_paged_path_wrote() {
+        let built = paged_path("/library/sections/7/all?sort=titleSort", PageReq { start: 40, size: 20 });
+        let query = built.split_once('?').unwrap().1;
+        assert_eq!(split_window(query), (Some(PageReq { start: 40, size: 20 }), "sort=titleSort".to_owned()));
+    }
+
+    #[test]
+    fn a_lone_size_is_no_window_and_is_still_removed() {
+        assert_eq!(split_window("type=1&X-Plex-Container-Size=12"), (None, "type=1".to_owned()));
+        assert_eq!(split_window(""), (None, String::new()));
+    }
 
     #[test]
     fn a_bare_path_takes_the_window_after_a_question_mark() {

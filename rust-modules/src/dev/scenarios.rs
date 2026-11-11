@@ -203,12 +203,19 @@ pub(crate) fn login_forced() -> bool {
 }
 
 /// `/tmp/plxnative-token` — the harness/headless test identity, read once. Never logged.
+/// A `DEMO=1` build whose own server is answering (`crate::demo::active`) and that has no trigger
+/// falls back to the demo's synthetic guest token, so it boots into the demo library unattended.
 pub(crate) fn dev_token() -> String {
     match plx_base::devtrig::read("token") {
         Some(s) if !s.is_empty() => {
             #[cfg(feature = "devtriggers")]
             plx_base::eventlog::log("token: using /tmp/plxnative-token (test identity)");
             s
+        }
+        #[cfg(feature = "demo-pms")]
+        _ if crate::demo::active() => {
+            plx_base::eventlog::log("token: using the demo bundle's synthetic guest");
+            crate::demo::TOKEN.to_owned()
         }
         _ => String::new(),
     }

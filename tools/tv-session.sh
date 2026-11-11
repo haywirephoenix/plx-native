@@ -187,9 +187,12 @@ set -- ${_argv[@]+"${_argv[@]}"}
 # nothing set FLAVOR, so the pre-fetch that used to stand above this line — a whole second Makefile
 # parse to learn a value the composed query already returns — is gone. `${FLAVOR:+…}` passes the
 # assignment only when there is one, which is what lets make answer with its default.
+# `tr -d '\r'`: a native Windows make (Git Bash) ends each line with CRLF, and a value read with
+# its `\r` ("debug\r") fails every comparison below.
 { read -r FLAVOR; read -r APPID; read -r APPDIR; read -r RUNDIR; read -r EVENTLOG; read -r APPPORT; read -r HOST; } < <(
   make -s -C "$REPO" ${FLAVOR:+FLAVOR="$FLAVOR"} \
-       print-flavor print-appid print-appdir print-rundir print-eventlog print-appport print-tv
+       print-flavor print-appid print-appdir print-rundir print-eventlog print-appport print-tv \
+    | tr -d '\r'
 )
 # On a bad flavour make has already printed the exact complaint; do not restate it wrongly —
 # the failed `read` above left FLAVOR empty, so echoing it back here would name nothing.
@@ -449,6 +452,7 @@ resolve_guest_token() {
   tok=$(cd "$REPO/tests" && python3 run.py --print-test-token 2>"$errfile")
   fi
   rc=$?
+  tok=${tok%$'\r'}   # Windows Python prints CRLF; a token with a trailing \r would reach the TV verbatim
   if [ $rc -ne 0 ] || [ -z "$tok" ]; then
     GUEST_ERROR=$(cat "$errfile" 2>/dev/null)
     [ -n "$GUEST_ERROR" ] || GUEST_ERROR="tests/run.py --print-test-token exited $rc with no output"

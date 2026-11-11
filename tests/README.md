@@ -55,7 +55,8 @@ so that a recording of the UI can be COMMITTED to this public repository:
   — and `scrub.rs` cannot recognise a title anyway. `--selftest` proves the shapes and the
   determinism (two servers, one seed, byte-identical answers) with no app. Boot the simulator
   against it with `make sim-shot SIM_PMS=127.0.0.1 SIM_PORT=32499` and any non-empty
-  `$SIM_DIR/plxnative-token`.
+  `$SIM_DIR/plxnative-token`. On the TV, `tools/tv-mock.sh` runs the mock, the reverse tunnel and
+  `tools/tv-session.sh up --guest --mock` together on one port (setup-environment skill).
 - **`tests/focusfp.sh`** drives eleven focus flows (boot → grid, grid → detail → BACK, the
   Library, Search with a seeded query, detail ↔ person, the Settings family, first-run consent,
   press-and-hold, the player read-out, pointer clicks; flow 10 — root BACK — is a television flow

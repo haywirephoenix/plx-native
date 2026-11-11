@@ -1,14 +1,15 @@
 name: demo build (debug)
 
 # A developer-only DEBUG package (`com.beb.plxnative.debug`, dev triggers ON) for a machine that
-# cannot cross-build locally. It exists so a tester can boot the app straight to Home on
-# tests/mock_pms.py's synthetic library (`tools/tv-session.sh up --guest --mock`), which needs the
-# `/tmp/plxnative-token` trigger that every RELEASE build compiles out.
+# cannot cross-build locally, built with DEMO=1 (docs/demo-pms.md): the app carries the demo bundle
+# (tests/mock_pms.py's demo library, written by tools/demo_bundle.py) and answers its own PMS
+# requests from it, so the television boots straight into the demo library with no computer.
 #
 # The PMS address compiled into it is LOOPBACK (127.0.0.1:32400), never a LAN address: this file
-# runs in public, so the build carries no private value. On the set, a reverse ssh tunnel
-# (`ssh -R 32400:127.0.0.1:32400 root@<tv>`) makes the device's loopback reach the mock on the
-# tester's computer.
+# runs in public, so the build carries no private value. The same package still works against a
+# mock on the tester's computer (`tools/tv-mock.sh`): when that tool's reverse tunnel already holds
+# 127.0.0.1:32400 on the set, the app's own server cannot bind it, says so in the log, and the app
+# talks to the computer's mock instead.
 #
 # Never install this on the stable id; the Makefile's release-guard refuses that anyway.
 
@@ -25,7 +26,7 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-24.04-arm
-    timeout-minutes: 45
+    timeout-minutes: 75
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -34,7 +35,8 @@ jobs:
 
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
-          workspaces: rust-modules
+          # DEMO=1 builds into its own target dir (the Makefile's RUST_TDIR).
+          workspaces: rust-modules -> target-demo
           key: armv7-demo
 
       - name: Cache the pinned downloads
@@ -50,14 +52,28 @@ jobs:
             vendor/ffmpeg-build
           key: ffmpeg-${{ runner.arch }}-${{ hashFiles('ci/build-ffmpeg.sh', 'ci/deps.py', 'ci/dependencies.json') }}
 
+      # The demo library's artwork sources (~390 MB, sha256-pinned in tests/demo_library/assets.json)
+      # and what `derive` builds from them. ffmpeg derives the images and scales the bundle's sizes.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/plxnative-demo
+          key: demo-library-${{ hashFiles('tests/demo_library/assets.json', 'tests/demo_library/catalog.json', 'tools/demo_library.py') }}
+
+      - name: Write the demo bundle
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
+          python3 tools/demo_library.py derive
+          python3 tools/demo_bundle.py
+
       - name: Point the build at the mock over loopback
         run: |
           printf '%s\n' '#define PMS_HOST "127.0.0.1"' '#define PMS_PORT 32400' > src/config.local.h
 
-      - name: Build + package (FLAVOR=debug, dev triggers on)
+      - name: Build + package (FLAVOR=debug, dev triggers on, DEMO=1)
         env:
           WEBOS_SDK: ${{ steps.ndk.outputs.sdk-dir }}
           FLAVOR: debug
+          DEMO: 1
         run: |
           make -j"$(nproc)"
           make ipk
@@ -65,7 +81,7 @@ jobs:
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: plxnative-debug-ipk
+          name: plxnative-demo-ipk
           path: pkg/com.beb.plxnative.debug_*_arm.ipk
           if-no-files-found: error
           retention-days: 7

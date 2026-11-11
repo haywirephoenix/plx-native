@@ -72,6 +72,31 @@ python3 tests/mock_pms.py --host <this-mac-lan-ip> --port 32499   # same address
 tools/tv-session.sh up --guest --mock --screen home       # debug flavor only; deploys and md5-verifies the binary, boots the synthetic identity
 ```
 
+**Loopback layout, one command.** To keep the mock off the LAN, compile in loopback instead
+(`#define PMS_HOST "127.0.0.1"` / `#define PMS_PORT <port>`; the debug IPK from the `demo build`
+workflow has 127.0.0.1:32400) and run:
+
+```bash
+tools/tv-mock.sh                      # --port N (default: config.local.h's PMS_PORT) · --screen S · --demo · --dry-run · -- <mock_pms.py args>
+tools/tv-mock.sh --demo               # the demo library (real titles + artwork); `python3 tools/demo_library.py derive` once first
+```
+
+It starts `tests/mock_pms.py` on 127.0.0.1, opens the reverse tunnel that makes 127.0.0.1:PORT on
+the TV reach it (`tools/tv-ssh ssh -N -o ExitOnForwardFailure=yes -R 127.0.0.1:PORT:127.0.0.1:PORT tv`),
+then runs `tools/tv-session.sh up --guest --mock`. All three get the same port, taken from
+`src/config.local.h` (the port compiled into the app) unless `--port` overrides it, and the script
+refuses to start when the two disagree or when there is no `pkg/plxnative` for `up` to check. Output is labelled `[mock]`,
+`[tunnel]`, `[tv]`. It then stays in the session: it waits for a TV that does not answer, reopens a
+dropped tunnel, restarts a mock that exits, retries a failed `up`, and reports the app closing or
+coming back on the TV (relaunch it from the TV). `q` or Ctrl+C stops the mock and the tunnel; the
+app stays up on the TV until `tools/tv-session.sh down`. Works from Git Bash on
+Windows (`sh tools/tv-mock.sh`). `--record FILE` saves the session's requests on quit, for the demo
+bundle.
+
+**No computer at all: the demo build.** `make DEMO=1 ipk` (after `python3 tools/demo_bundle.py`), or
+the `demo build` workflow's `plxnative-demo-ipk`, packages the demo library with the app, which then
+answers its own PMS requests and boots into it unattended (`docs/demo-pms.md`).
+
 The TV address and MAC are per-USER, not per-checkout: `${PLX_TV_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/plxnative}`,
 so a fresh worktree needs nothing seeded for them and no setup hook (a copied file would go stale). A
 `.tv-host` / `.tv-mac` in a checkout (or in the main checkout) still works and takes precedence, as a
