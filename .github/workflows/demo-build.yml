@@ -52,16 +52,26 @@ jobs:
             vendor/ffmpeg-build
           key: ffmpeg-${{ runner.arch }}-${{ hashFiles('ci/build-ffmpeg.sh', 'ci/deps.py', 'ci/dependencies.json') }}
 
-      # The demo library's artwork sources (~390 MB, sha256-pinned in tests/demo_library/assets.json)
-      # and what `derive` builds from them. ffmpeg derives the images and scales the bundle's sizes.
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      # As site-video.yml does it: apt's ffmpeg derives the demo art and scales the bundle's image
+      # sizes; Pillow is what `demo_library.py` checks every fetched source's pixel size with.
+      - name: Install ffmpeg and Pillow (the library's derive step, the bundle's image sizes)
+        timeout-minutes: 15
+        uses: ./.github/actions/apt-install
         with:
-          path: ~/.cache/plxnative-demo
-          key: demo-library-${{ hashFiles('tests/demo_library/assets.json', 'tests/demo_library/catalog.json', 'tools/demo_library.py') }}
+          packages: ffmpeg python3-pil
+
+      - name: Cache the demo library's source images
+        # Pinned downloads (tests/demo_library/assets.json carries every sha256): one key per manifest.
+        # Only the sources (~390 MB) are cached; `derive` rebuilds the derived art, recipe-hashed and cheap.
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/plxnative-demo/src
+          key: demo-src-${{ hashFiles('tests/demo_library/assets.json') }}
 
       - name: Write the demo bundle
+        timeout-minutes: 20
         run: |
-          sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
+          python3 tools/demo_library.py fetch
           python3 tools/demo_library.py derive
           python3 tools/demo_bundle.py
 
